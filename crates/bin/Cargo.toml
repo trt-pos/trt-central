@@ -1,0 +1,13 @@
+[package]
+name = "bin"
+version = "3.0.0"
+authors = ["Borja Castellano"]
+edition = "2024"  
+
+[dependencies]
+rocket = { version = "0.5.1", features = ["json"] }
+zip = "2.2.0"
+serde = { version = "1.0.209", features = ["derive"] }
+serde_json = "1.0.127"
+sqlx = { version = "0.8", features = [ "runtime-async-std", "mysql", "macros", "chrono" ] }
+bcrypt = "0.15.1"
