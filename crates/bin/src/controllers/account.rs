@@ -3,7 +3,7 @@ use rocket::serde::json::Json;
 use rocket::tokio::io::AsyncReadExt;
 use rocket::{Data, State};
 use serde::Deserialize;
-use server_side::entities::{Account, License};
+use bin::entities::{Account, License};
 use sqlx::MySqlPool;
 use std::collections::HashMap;
 

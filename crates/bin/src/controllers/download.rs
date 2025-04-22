@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use rocket::fs::NamedFile;
-use server_side::APP_DIR;
+use bin::APP_DIR;
 
 #[get("/<resource_name>")]
 pub async fn get_resource(resource_name: &str) -> Option<NamedFile> {

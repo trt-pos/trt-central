@@ -1,7 +1,7 @@
 use rocket::fs::NamedFile;
 use rocket::serde::json::Json;
-use server_side::entities::PluginData;
-use server_side::{Version, APP_DIR};
+use bin::entities::PluginData;
+use bin::{Version, APP_DIR};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -72,7 +72,7 @@ fn extract_plugin_version(plugin_id: &str) -> Version {
 
 #[cfg(test)]
 mod tests {
-    use server_side::entities::PluginData;
+    use bin::entities::PluginData;
 
     #[test]
     fn test_extract_plugin_data() {

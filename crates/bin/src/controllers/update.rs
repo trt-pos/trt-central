@@ -1,6 +1,6 @@
 use rocket::fs::NamedFile;
 use rocket::serde::json::Json;
-use server_side::{Version, APP_DIR};
+use bin::{Version, APP_DIR};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, Read};

@@ -1,6 +1,6 @@
 use rocket::serde::json::Json;
 use rocket::State;
-use server_side::entities::License;
+use bin::entities::License;
 use sqlx::MySqlPool;
 use std::collections::HashMap;
 
