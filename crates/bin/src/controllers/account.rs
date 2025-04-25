@@ -1,74 +1,70 @@
-use rocket::data::ToByteUnit;
-use rocket::serde::json::Json;
-use rocket::tokio::io::AsyncReadExt;
-use rocket::{Data, State};
+use crate::entities::{Account, License};
+use actix_web::{get, post, web, HttpResponse, Responder};
 use serde::Deserialize;
-use bin::entities::{Account, License};
 use sqlx::MySqlPool;
-use std::collections::HashMap;
 
-#[get("/has_valid_license", data = "<account>")]
-pub async fn has_valid_license<'a>(
-    pool: &State<MySqlPool>,
-    account: Data<'a>,
-) -> Result<Json<HashMap<String, bool>>, &'a str> {
-    let account = LoggingBody::from_request_data(account).await?;
+#[get("/has_valid_license?<email>")]
+pub async fn has_valid_license(
+    pool: web::Data<MySqlPool>,
+    email: String,
+) -> actix_web::Result<impl Responder> {
+    let license = License::query_by_email(&email, &pool).await;
 
-    let license = match sqlx::query_as::<_, License>("SELECT * FROM License WHERE owner_account_id in (SELECT id FROM Account WHERE email = ? AND password = ?)")
-        .bind(account.email)
-        .bind(account.password)
-        .fetch_one(pool.inner())
-        .await
-    {
-        Ok(value) => value,
-        Err(_) => return Ok(Json(HashMap::from([("message".to_string(), false)]))),
-    };
+    let license = license.ok_or(actix_web::error::ErrorNotFound(format!(
+        "License not found for email {}",
+        email
+    )))?;
 
-    if !license.is_valid() {
-        return Ok(Json(HashMap::from([("message".to_string(), false)])));
-    }
-
-    Ok(Json(HashMap::from([("message".to_string(), true)])))
-}
-
-#[get("/login", data = "<account>")]
-pub async fn login<'a>(
-    pool: &State<MySqlPool>,
-    account: Data<'a>,
-) -> Result<Json<HashMap<String, bool>>, &'a str> {
-    let account: LoggingBody = LoggingBody::from_request_data(account).await?;
-
-    match sqlx::query_as::<_, Account>("SELECT * FROM Account WHERE email = ? AND password = ?")
-        .bind(account.email)
-        .bind(account.password)
-        .fetch_one(pool.inner())
-        .await
-    {
-        Ok(_) => Ok(Json(HashMap::from([("message".to_string(), true)]))),
-        Err(_) => Err("Failed to fetch account"),
+    if license.is_valid() {
+        Ok(HttpResponse::Ok())
+    } else {
+        Err(actix_web::error::ErrorUnauthorized(
+            "Invalid license or expired",
+        ))
     }
 }
 
-// region: Bodies
+#[post("/login")]
+pub async fn login(
+    pool: web::Data<MySqlPool>,
+    body: web::Form<LoginBody>,
+) -> actix_web::Result<impl Responder> {
+    let account = Account::query_by_email(&body.email, &pool).await.ok_or(
+        actix_web::error::ErrorUnauthorized("Invalid email or password"),
+    )?;
+
+    if account.validate_password(&body.password) {
+        Ok(HttpResponse::Ok())
+    } else {
+        Err(actix_web::error::ErrorUnauthorized(
+            "Invalid email or password",
+        ))
+    }
+}
+
+#[get("/validate?<id>")]
+pub async fn validate_license(
+    pool: web::Data<MySqlPool>,
+    id: String,
+) -> actix_web::Result<impl Responder> {
+    let license = License::query_by_id(&id, &pool)
+        .await
+        .ok_or(actix_web::error::ErrorNotFound(format!(
+            "License is invalid or expired for id {}",
+            id
+        )))?;
+
+    if license.is_valid() {
+        Ok(HttpResponse::Ok())
+    } else {
+        Err(actix_web::error::ErrorUnauthorized(
+            "Invalid license or expired",
+        ))
+    }
+}
 
 #[derive(Deserialize)]
-struct LoggingBody {
+struct LoginBody {
     email: String,
     password: String,
 }
-
-impl LoggingBody {
-    async fn from_request_data(data: Data<'_>) -> Result<Self, &str> {
-        let mut body = String::new();
-        if (data.open(128.kilobytes()).read_to_string(&mut body).await).is_err() {
-            return Err("Failed to read request body");
-        }
-
-        match serde_json::from_str(&body) {
-            Ok(account) => Ok(account),
-            Err(_) => Err("Failed to parse request body"),
-        }
-    }
-}
-
-// endregion: Bodies

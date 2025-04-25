@@ -1,3 +1,10 @@
 [workspace]
 resolver = "2"
-members = ["crates/bin"]
+members = ["crates/bin", "crates/data", "crates/plugin-repo"]
+
+[workspace.dependencies]
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = { version = "1.0.140" }
+tokio = { version = "1.44.2", features = ["macros", "rt-multi-thread"] }
+getset = { version = "0.1.5" }
+thiserror = { version = "2.0.12"}

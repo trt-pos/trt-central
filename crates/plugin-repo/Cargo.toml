@@ -1,18 +1,18 @@
 [package]
-name = "bin"
-version = "3.0.0"
-authors = ["Borja Castellano"]
+name = "plugin-repo"
+version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 actix-web = { version = "4.10.2" }
 actix-files = { version = "0.6.6" }
 zip = { version = "2.6.1" }
-sqlx = { version = "0.8.5", features = [ "runtime-async-std", "mysql", "macros", "chrono" ] }
-bcrypt = "0.17.0"
+uuid = { version = "1.16.0", features = ["v4"] }
+clap = { version = "4.5.37", features = ["derive", "env"] }
 
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+getset = { workspace = true }
 
 data = { path = "../data" }

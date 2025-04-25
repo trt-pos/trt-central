@@ -1,41 +1,51 @@
-#[macro_use]
-extern crate rocket;
+use actix_web::web;
+use std::sync::LazyLock;
+use sqlx::mysql;
 
-use rocket::{launch, routes};
-
-mod database;
 mod controllers;
+mod entities;
 
-#[launch]
-async fn rocket() -> _ {
-    let figment = rocket::Config::figment()
-        .merge(("port", 8000))
-        .merge(("address", "0.0.0.0"));
+pub static APP_DIR: LazyLock<String> = LazyLock::new(|| {
+    let exe_path = std::env::current_exe().expect("The exe path couldn't be found");
 
-    rocket::custom(figment)
-        .manage(database::init_pool().await)
-        .mount("/api/v1/theroundtable", routes![
-            controllers::app_installer
-        ])
-        .mount("/api/v1/theroundtable/plugins", routes![
-            controllers::plugin::plugin_file_response,
-            controllers::plugin::need_update,
-            controllers::plugin::get_plugins_data
-        ])
-        .mount("/api/v1/theroundtable/update", routes![
-            controllers::update::last_app_version,
-            controllers::update::available_update,
-            controllers::update::app_zip,
-            controllers::app_installer
-        ])
-        .mount("/api/v1/theroundtable/downloads", routes![
-            controllers::download::get_resource
-        ])
-        .mount("/api/v1/theroundtable/accounts", routes![
-            controllers::account::has_valid_license,
-            controllers::account::login
-        ])
-        .mount("/api/v1/theroundtable/licenses", routes![
-            controllers::license::validate_license
-        ])
+    let exe_dir = exe_path.parent().expect("The exe path couldn't be found");
+
+    let app_dir = exe_dir.parent().expect("The app dir couldn't be found");
+
+    let app_dir_string = app_dir
+        .to_str()
+        .expect("The exe path couldn't be converted to a string");
+    app_dir_string.to_string()
+});
+
+#[tokio::main]
+async fn main() -> std::io::Result<()> {
+    start_server(8000, "0.0.0.0").await
+}
+
+async fn start_server(port: u16, addrs: &str) -> std::io::Result<()> {
+    let db_pool = mysql::MySqlPoolOptions::new()
+        .max_connections(10)
+        .connect(&std::env::var("TRT_DB_CONN").expect("TRT_DB_CONN must be set"))
+        .await
+        .expect("Failed to connect to MariaDB");
+
+    actix_web::HttpServer::new(move || {
+        actix_web::App::new()
+            .app_data(web::Data::new(db_pool.clone()))
+            .service(
+                web::scope("/api/v1/theroundtable")
+                    .service(web::scope("/update").service(controllers::update::available_update))
+                    .service(web::scope("/resource").service(controllers::resource::get_resource))
+                    .service(
+                        web::scope("/account")
+                            .service(controllers::account::has_valid_license)
+                            .service(controllers::account::login)
+                            .service(controllers::account::validate_license),
+                    ),
+            )
+    })
+    .bind((addrs, port))?
+    .run()
+    .await
 }
