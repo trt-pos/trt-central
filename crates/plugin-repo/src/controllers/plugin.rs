@@ -1,11 +1,11 @@
 use crate::data::*;
-use actix_web::{get, post, put, web, Responder};
+use actix_web::{Responder, get, post, put, web};
 use std::collections::HashMap;
+use std::fs::File;
 use std::io::{BufWriter, Cursor, Read, Write};
 use std::path::PathBuf;
 use std::sync::LazyLock;
 use std::{fs, io};
-use std::fs::File;
 
 #[get("/{plugin_id}/{version}/{resource}")]
 pub async fn get_plugin_resource(
@@ -13,8 +13,7 @@ pub async fn get_plugin_resource(
     version: web::Path<String>,
     resource: web::Path<String>,
 ) -> actix_web::Result<impl Responder> {
-    let plugin_resource = PluginResource::try_from(resource.as_str())
-        .map_err(|_| actix_web::error::ErrorBadRequest("Invalid resource"))?;
+    let plugin_resource = PluginResource::try_from(resource.as_str())?;
 
     get_plugin_res(&plugin_id, &version, &plugin_resource).await
 }
@@ -38,49 +37,54 @@ async fn get_plugin_res(
     Ok(actix_files::NamedFile::open(path_buff))
 }
 
-#[post("/{plugin_id}/{version}>")]
+#[post("/")]
 pub async fn post_plugin(
-    plugin_id: web::Path<String>,
-    version: web::Path<String>,
     body: web::Bytes,
     _auth: crate::middleware::PluginPublishingAuthToken,
 ) -> actix_web::Result<impl Responder> {
-    let plugin = Plugin::new(&plugin_id, &version)?;
+    persist_plugin(body, |plugin| {
+        let path_buff = PathBuf::from(plugin.get_resource_path());
 
-    let path_buff = PathBuf::from(plugin.get_resource_path());
+        if path_buff.exists() {
+            return Err(actix_web::error::ErrorConflict(format!(
+                "plugin {} already exists in the repository",
+                plugin
+            )));
+        }
 
-    if path_buff.exists() {
-        return Err(actix_web::error::ErrorConflict(format!(
-            "plugin {} already exists in the repository",
-            plugin
-        )));
-    }
-
-    persist_plugin(plugin, body).await
+        Ok(())
+    })
+    .await
 }
 
-#[put("/{plugin_id}/{version}")]
+#[put("/")]
 pub async fn put_plugin(
-    plugin_id: web::Path<String>,
-    version: web::Path<String>,
     body: web::Bytes,
     _auth: crate::middleware::PluginPublishingAuthToken,
 ) -> actix_web::Result<impl Responder> {
-    let plugin = Plugin::new(&plugin_id, &version)?;
+    persist_plugin(body, |plugin| {
+        let plugin_version_dir = PathBuf::from(plugin.get_resource_path());
 
-    let plugin_version_dir = PathBuf::from(plugin.get_resource_path());
+        if !plugin_version_dir.exists() {
+            return Err(actix_web::error::ErrorNotFound(format!(
+                "plugin {} doesn't exist in the repository",
+                plugin
+            )));
+        }
 
-    if !plugin_version_dir.exists() {
-        return Err(actix_web::error::ErrorNotFound(format!(
-            "plugin {} doesn't exist in the repository",
-            plugin
-        )));
-    }
-
-    persist_plugin(plugin, body).await
+        Ok(())
+    })
+    .await
 }
 
-async fn persist_plugin(plugin: Plugin, body: web::Bytes) -> actix_web::Result<impl Responder> {
+async fn persist_plugin<F>(body: web::Bytes, is_valid: F) -> actix_web::Result<impl Responder>
+where
+    F: Fn(&Plugin) -> Result<(), actix_web::error::Error>,
+{
+    let plugin = Plugin::try_from(body.as_ref())?;
+
+    is_valid(&plugin)?;
+
     let temp_dir = std::env::temp_dir().join(format!("plugin_tmp_{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&temp_dir)?;
 
@@ -119,9 +123,11 @@ async fn extract_and_save_plugin_from_zip(
             continue;
         }
 
-        let res_name = if let Some(resource) = FILES_TO_EXTRACT.get(file.name().rsplit('/').next().unwrap_or("")) {
+        let res_name = if let Some(resource) =
+            FILES_TO_EXTRACT.get(file.name().rsplit('/').next().unwrap_or(""))
+        {
             resource.to_string()
-        } else { 
+        } else {
             continue;
         };
 
@@ -151,14 +157,18 @@ async fn extract_and_save_plugin_from_zip(
     let dest_path = temp_dir.join(PluginResource::Jar.to_string());
     let mut writer = BufWriter::new(File::create(&dest_path)?);
     writer.write_all(jar.as_ref())?;
-    
+
     fs::create_dir_all(resource_dir)?;
 
     for entry in fs::read_dir(temp_dir)? {
         let entry = entry?;
         let file_name = entry.file_name();
+        let src = entry.path();
         let dest = resource_dir.join(file_name);
-        fs::rename(entry.path(), dest)?;
+        fs::copy(&src, &dest)
+            .map_err(|e| std::io::Error::new(e.kind(), format!("copy failed: {}", e)))?;
+
+        let _ = fs::remove_file(&src);
     }
 
     Ok(())

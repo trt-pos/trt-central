@@ -14,7 +14,7 @@ pub struct Metadata {
     #[get = "pub"]
     versioning: Versioning,
     #[get = "pub"]
-    last_updated: u64
+    last_updated: u64,
 }
 
 impl Metadata {
@@ -22,31 +22,32 @@ impl Metadata {
         let path_buff = PathBuf::from(crate::PLUGINS_REPO_DIR.to_string())
             .join(plugin_id)
             .join("metadata.json");
-        
+
         if !path_buff.exists() {
             return Ok(Self::default(plugin_id));
         }
-        
+
         let file = fs::File::open(path_buff)?;
         let reader = io::BufReader::new(file);
-        
+
         Ok(serde_json::from_reader(reader).expect("Invalid data format"))
     }
-    
+
     pub fn default(plugin_id: &str) -> Self {
         Metadata {
             plugin_id: plugin_id.to_string(),
             versioning: Versioning {
                 last: Version::default(),
-                versions: vec![]
+                versions: vec![],
             },
-            last_updated: 0
+            last_updated: 0,
         }
     }
-    
+
     pub fn save(&self) -> io::Result<()> {
-        static WRITTING_FILES: LazyLock<RwLock<HashMap<String, Mutex<()>>>> = LazyLock::new(|| RwLock::new(HashMap::new()));
-        
+        static WRITTING_FILES: LazyLock<RwLock<HashMap<String, Mutex<()>>>> =
+            LazyLock::new(|| RwLock::new(HashMap::new()));
+
         let path_buff = PathBuf::from(crate::PLUGINS_REPO_DIR.to_string())
             .join(&self.plugin_id)
             .join("metadata.json");
@@ -60,21 +61,22 @@ impl Metadata {
             let mut lock = WRITTING_FILES.write().unwrap();
             lock.insert(self.plugin_id.clone(), Mutex::new(()));
         }
-        
+
         let lock = WRITTING_FILES.read().unwrap();
         let _guard = lock.get(&self.plugin_id).unwrap().lock().unwrap();
-        
+
         let file = fs::File::create(path_buff)?;
         let writer = io::BufWriter::new(file);
-        
-        serde_json::to_writer(writer, self).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+
+        serde_json::to_writer_pretty(writer, self)
+            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
     }
-    
+
     pub fn add_version(&mut self, version: Version) {
-        if version > self.versioning.last { 
+        if version > self.versioning.last {
             self.versioning.last = version.clone();
         }
-        
+
         self.versioning.versions.push(version);
         self.last_updated = SystemTime::now()
             .duration_since(UNIX_EPOCH)

@@ -1,8 +1,11 @@
-use crate::data::Metadata;
 use crate::PLUGINS_REPO_DIR;
-use data::Version;
+use crate::data::Metadata;
+use data::{PluginData, Version};
 use getset::Getters;
-use std::fmt::{Display, Formatter};
+use std::{
+    fmt::{Display, Formatter},
+    io::{Cursor, Read},
+};
 
 pub enum PluginResource {
     Jar,
@@ -21,14 +24,16 @@ impl Display for PluginResource {
 }
 
 impl TryFrom<&str> for PluginResource {
-    type Error = ();
+    type Error = actix_web::error::Error;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value {
             "jar" => Ok(PluginResource::Jar),
             "icon" => Ok(PluginResource::Icon),
             "data" => Ok(PluginResource::Data),
-            _ => Err(()),
+            _ => Err(actix_web::error::ErrorBadRequest(format!(
+                "Invalid resource: {value}. expected jar, icon or data"
+            ))),
         }
     }
 }
@@ -77,6 +82,46 @@ impl Plugin {
     #[inline(always)]
     pub fn get_plugin_resource(&self, resource: &PluginResource) -> String {
         format!("{}/{}", self.get_resource_path(), resource)
+    }
+}
+
+impl TryFrom<&[u8]> for Plugin {
+    type Error = actix_web::Error;
+
+    fn try_from(value: &[u8]) -> Result<Self, Self::Error> {
+        let reader = Cursor::new(&value);
+        let mut archive = zip::ZipArchive::new(reader).map_err(|e| {
+            actix_web::error::ErrorBadRequest(format!("Failed to open the plugin jar: {}", e))
+        })?;
+
+        for i in 0..archive.len() {
+            let mut file = if let Ok(file) = archive.by_index(i) {
+                file
+            } else {
+                continue;
+            };
+
+            if !file.is_file() || file.name().rsplit('/').next().unwrap_or("") != "plugin-data.json"
+            {
+                continue;
+            }
+
+            let mut plugin_data_json = String::new();
+            if file.read_to_string(&mut plugin_data_json).is_err() {
+                continue;
+            }
+
+            let plugin_data =
+                serde_json::from_str::<PluginData>(&plugin_data_json).map_err(|e| {
+                    actix_web::error::ErrorBadRequest(format!("unable to parse plugin data: {e}"))
+                })?;
+
+            return Plugin::new(plugin_data.id(), &plugin_data.version().to_string());
+        }
+
+        Err(actix_web::error::ErrorBadRequest(
+            "Invalid plugin data".to_string(),
+        ))
     }
 }
 

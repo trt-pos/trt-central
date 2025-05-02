@@ -1,6 +1,6 @@
-use std::hash::{Hash, Hasher};
-use serde::{Deserialize, Serialize};
 use crate::Version;
+use serde::{Deserialize, Serialize};
+use std::hash::{Hash, Hasher};
 
 #[derive(Deserialize, Serialize)]
 pub struct PluginData {
@@ -13,14 +13,20 @@ pub struct PluginData {
     #[serde(rename = "pluginVersion")]
     plugin_version: Version,
     #[serde(rename = "pluginVendor")]
+    plugin_vendor: String,
+    #[serde(rename = "pluginVendorUrl")]
     plugin_vendor_url: String,
     #[serde(rename = "pluginDependencies")]
-    plugin_dependency: Vec<PluginDependency>,
+    plugin_dependencies: Vec<PluginDependency>,
 }
 
 impl PluginData {
     pub fn version(&self) -> &Version {
         &self.plugin_version
+    }
+
+    pub fn id(&self) -> &str {
+        &self.plugin_id
     }
 }
 
@@ -32,14 +38,14 @@ impl PartialEq for PluginData {
 
 impl Hash for PluginData {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.plugin_name.hash(state)
+        self.plugin_id.hash(state)
     }
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct PluginDependency {
     #[serde(rename = "pluginId")]
-    pub plugin_name: String,
+    pub plugin_id: String,
     #[serde(rename = "pluginVersion")]
     pub plugin_version: String,
 }
