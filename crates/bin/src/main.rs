@@ -34,7 +34,7 @@ async fn start_server(port: u16, addrs: &str) -> std::io::Result<()> {
         actix_web::App::new()
             .app_data(web::Data::new(db_pool.clone()))
             .service(
-                web::scope("/api/v1/theroundtable")
+                web::scope("/api/v2/theroundtable")
                     .service(web::scope("/update").service(controllers::update::available_update))
                     .service(web::scope("/resource").service(controllers::resource::get_resource))
                     .service(
