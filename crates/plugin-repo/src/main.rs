@@ -44,15 +44,12 @@ async fn start_server(port: u16, addrs: &str) -> std::io::Result<()> {
     actix_web::HttpServer::new(move || {
         actix_web::App::new()
             .service(
-                web::scope("/plugins-repo")
-                    .service(
-                        web::scope("/plugin")
-                            .service(controllers::plugin::get_plugin_resource)
-                            .service(controllers::plugin::post_plugin)
-                            .service(controllers::plugin::put_plugin),
-                    )
-                    .service(web::scope("/data").service(controllers::data::get_all)),
+                web::scope("/plugin")
+                    .service(controllers::plugin::get_plugin_resource)
+                    .service(controllers::plugin::post_plugin)
+                    .service(controllers::plugin::put_plugin),
             )
+            .service(web::scope("/data").service(controllers::data::get_all))
     })
     .bind((addrs, port))?
     .run()

@@ -1,5 +1,5 @@
-use crate::PLUGINS_REPO_DIR;
 use crate::data::Metadata;
+use crate::PLUGINS_REPO_DIR;
 use data::{PluginData, Version};
 use getset::Getters;
 use std::{
@@ -50,7 +50,7 @@ impl Plugin {
     pub fn new(plugin_id: &str, version: &str) -> actix_web::Result<Self> {
         let version = if version == "last" {
             let metadata =
-                Metadata::load(&plugin_id).map_err(|e| actix_web::error::ErrorNotFound(e))?;
+                Metadata::load(plugin_id).map_err(actix_web::error::ErrorNotFound)?;
             metadata.versioning().last().to_string()
         } else {
             version.to_string()

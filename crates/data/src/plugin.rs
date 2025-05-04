@@ -16,6 +16,10 @@ pub struct PluginData {
     plugin_vendor: String,
     #[serde(rename = "pluginVendorUrl")]
     plugin_vendor_url: String,
+    #[serde(rename = "tags")]
+    tags: Option<Vec<String>>,
+    #[serde(rename = "category")]
+    category: Option<String>,
     #[serde(rename = "pluginDependencies")]
     plugin_dependencies: Vec<PluginDependency>,
 }

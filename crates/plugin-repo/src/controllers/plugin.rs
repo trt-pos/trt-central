@@ -1,5 +1,6 @@
 use crate::data::*;
-use actix_web::{Responder, get, post, put, web};
+use actix_web::{get, post, put, web, Responder};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufWriter, Cursor, Read, Write};
@@ -7,25 +8,27 @@ use std::path::PathBuf;
 use std::sync::LazyLock;
 use std::{fs, io};
 
+#[derive(Deserialize)]
+struct ResourceIdentifier {
+    plugin_id: String,
+    version: String,
+    resource: String,
+}
+
 #[get("/{plugin_id}/{version}/{resource}")]
 pub async fn get_plugin_resource(
-    plugin_id: web::Path<String>,
-    version: web::Path<String>,
-    resource: web::Path<String>,
+    path: web::Path<ResourceIdentifier>,
 ) -> actix_web::Result<impl Responder> {
-    let plugin_resource = PluginResource::try_from(resource.as_str())?;
-
-    get_plugin_res(&plugin_id, &version, &plugin_resource).await
+    get_plugin_res(&path).await
 }
 
 async fn get_plugin_res(
-    plugin_id: &str,
-    version: &str,
-    resource: &PluginResource,
+    resource_identifier: &ResourceIdentifier,
 ) -> actix_web::Result<impl Responder + use<>> {
-    let plugin = Plugin::new(plugin_id, version)?;
-
-    let path_buff = PathBuf::from(plugin.get_plugin_resource(resource));
+    let plugin = Plugin::new(&resource_identifier.plugin_id, &resource_identifier.version)?;
+    let resource = PluginResource::try_from(resource_identifier.resource.as_str())?;
+    
+    let path_buff = PathBuf::from(plugin.get_plugin_resource(&resource));
 
     if !path_buff.exists() {
         return Err(actix_web::error::ErrorNotFound(format!(
@@ -166,7 +169,7 @@ async fn extract_and_save_plugin_from_zip(
         let src = entry.path();
         let dest = resource_dir.join(file_name);
         fs::copy(&src, &dest)
-            .map_err(|e| std::io::Error::new(e.kind(), format!("copy failed: {}", e)))?;
+            .map_err(|e| io::Error::new(e.kind(), format!("copy failed: {}", e)))?;
 
         let _ = fs::remove_file(&src);
     }
