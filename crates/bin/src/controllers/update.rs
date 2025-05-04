@@ -1,48 +1,49 @@
 use actix_web::{get, web, HttpResponse, Responder};
 use data::Version;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use zip::ZipArchive;
 
-#[get("/available?<version>")]
-pub async fn available_update(version: web::Path<String>) -> actix_web::Result<impl Responder> {
-    let jar_file_path = crate::APP_DIR.to_string() + "/resources/desktop-app.jar";
-
-    let last_version = get_jar_version(&jar_file_path);
-
-    match last_version {
-        Some(last_version) => {
-            let response = Version::new(version.clone())
-                .map_err(actix_web::error::ErrorBadRequest)?
-                < Version::new(last_version).expect("has to be valid");
-
-            Ok(HttpResponse::Ok().json(HashMap::from([
-                ("response".to_string(), response),
-                ("succesfull".to_string(), true),
-            ])))
-        }
-        None => Err(actix_web::error::ErrorInternalServerError(
-            "Failed to read version",
-        )),
-    }
+#[derive(Deserialize)]
+pub struct AvailableVersionQuery {
+    version: String,
 }
 
-fn get_jar_version(jar_file_path: &str) -> Option<String> {
+#[get("/available")]
+pub async fn available_update(
+    query: web::Query<AvailableVersionQuery>,
+) -> actix_web::Result<impl Responder> {
+    let jar_file_path = crate::APP_DIR.to_string() + "/resources/desktop-app.jar";
+
+    let last_version = get_jar_version(&jar_file_path)?;
+
+    let response = Version::new(query.version.clone())
+        .map_err(actix_web::error::ErrorBadRequest)?
+        < Version::new(last_version).expect("has to be valid");
+
+    Ok(HttpResponse::Ok().json(HashMap::from([
+        ("response".to_string(), response),
+    ])))
+}
+
+fn get_jar_version(jar_file_path: &str) -> Result<String, actix_web::Error> {
     extract_version_from_jar(jar_file_path)
 }
 
-fn extract_version_from_jar(jar_file_path: &str) -> Option<String> {
-    let jar_file = File::open(jar_file_path).ok()?;
-    let mut archive = ZipArchive::new(jar_file).ok()?;
+fn extract_version_from_jar(jar_file_path: &str) -> Result<String, actix_web::Error> {
+    let jar_file = File::open(jar_file_path)?;
+    let mut archive = ZipArchive::new(jar_file)
+        .map_err(actix_web::error::ErrorInternalServerError)?;
 
     let entry = archive
         .by_name("META-INF/maven/org.lebastudios.theroundtable/desktop-app/pom.properties")
-        .ok()?;
+        .map_err(actix_web::error::ErrorInternalServerError)?;
 
     let mut properties = String::new();
     let mut reader = BufReader::new(entry);
-    reader.read_to_string(&mut properties).ok()?;
+    reader.read_to_string(&mut properties)?;
 
     let properties_map: HashMap<String, String> = properties
         .lines()
@@ -56,5 +57,10 @@ fn extract_version_from_jar(jar_file_path: &str) -> Option<String> {
         })
         .collect();
 
-    properties_map.get("version").cloned()
+    match properties_map.get("version") {
+        None => Err(actix_web::error::ErrorInternalServerError(
+            "version property not found",
+        )),
+        Some(v) => Ok(v.clone()),
+    }
 }
