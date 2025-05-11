@@ -17,6 +17,14 @@ struct Args {
     )]
     port: u16,
 
+    #[arg(
+        short = 'm',
+        long = "max-payload",
+        env = "TRT_PLUGINS_REPO_MAX_PAYLOAD",
+        default_value_t = 50 * 1024 * 1024
+    )]
+    max_payload: usize,
+    
     #[arg(short = 'a', long = "addrs", env = "TRT_PLUGINS_REPO_ADDRS")]
     addrs: String,
 
@@ -43,6 +51,7 @@ async fn start_server(port: u16, addrs: &str) -> std::io::Result<()> {
     
     actix_web::HttpServer::new(move || {
         actix_web::App::new()
+            .app_data(web::PayloadConfig::new(ARGS.max_payload))
             .service(
                 web::scope("/plugin")
                     .service(controllers::plugin::get_plugin_resource)
