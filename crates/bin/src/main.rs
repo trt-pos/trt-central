@@ -1,6 +1,6 @@
 use actix_web::web;
-use std::sync::LazyLock;
 use sqlx::mysql;
+use std::sync::LazyLock;
 
 mod controllers;
 mod entities;
