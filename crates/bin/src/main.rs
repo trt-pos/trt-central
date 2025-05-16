@@ -1,4 +1,5 @@
 use actix_web::web;
+use sqlx::migrate::Migrator;
 use sqlx::mysql;
 use std::sync::LazyLock;
 
@@ -20,16 +21,27 @@ pub static APP_DIR: LazyLock<String> = LazyLock::new(|| {
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
+    #[cfg(debug_assertions)]
+    dotenv::dotenv().expect("Failed to load .env file");
+
     start_server(8000, "0.0.0.0").await
 }
 
 async fn start_server(port: u16, addrs: &str) -> std::io::Result<()> {
     let db_pool = mysql::MySqlPoolOptions::new()
         .max_connections(10)
-        .connect(&std::env::var("TRT_DB_CONN").expect("TRT_DB_CONN must be set"))
+        .connect(&std::env::var("DATABASE_URL").expect("DATABASE_URL must be set"))
         .await
         .expect("Failed to connect to MariaDB");
 
+    static MIGRATOR: Migrator = sqlx::migrate!();
+    MIGRATOR
+        .run(&db_pool)
+        .await
+        .unwrap_or_else(|e| panic!("Failed to run migrations: {}", e));
+
+    println!("Migrations completed");
+    
     actix_web::HttpServer::new(move || {
         actix_web::App::new()
             .app_data(web::Data::new(db_pool.clone()))
