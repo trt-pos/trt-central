@@ -63,18 +63,18 @@ mod tests {
         let plugin_data = r#"
 {
   "pluginName": "Table Drawing",
-  "pluginId": "plugin-table-drawing",
+  "pluginId": "floor-plan",
   "pluginDescription": "Draw and manage the tables is your establishment",
   "pluginVersion": "3.0.0",
   "pluginVendor": "Leba Studios - Software Solutions",
   "pluginVendorUrl": "https://lebastudios.org",
   "pluginDependencies": [
     {
-      "pluginId": "desktop-app",
+      "pluginId": "core",
       "pluginVersion": "3.0.0"
     },
     {
-      "pluginId": "plugin-cash-register",
+      "pluginId": "cr",
       "pluginVersion": "3.0.0"
     }
   ]
