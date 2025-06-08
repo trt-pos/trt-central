@@ -54,7 +54,9 @@ async fn start_server(port: u16, addrs: &str) -> std::io::Result<()> {
                             .service(controllers::account::has_valid_license)
                             .service(controllers::account::login)
                             .service(controllers::account::validate_license),
-                    ),
+                    )
+                    .service(web::scope("/remote-supp-request"))
+                    .service(web::scope("/app-installation")),
             )
     })
     .bind((addrs, port))?

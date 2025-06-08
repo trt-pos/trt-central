@@ -6,9 +6,8 @@ use sqlx::FromRow;
 #[derive(FromRow)]
 pub struct License {
     id: String,
-    r#type: String,
+    max_devices: u32,
     end_date: DateTime<Utc>,
-    owner_account_id: i32,
 }
 
 impl License {
@@ -45,9 +44,7 @@ impl Serialize for License {
     {
         let mut map = serializer.serialize_map(Some(4))?;
         map.serialize_entry("id", &self.id)?;
-        map.serialize_entry("type", &self.r#type)?;
         map.serialize_entry("end_date", &self.end_date.to_string())?;
-        map.serialize_entry("account_id", &self.owner_account_id)?;
         map.end()
     }
 }
