@@ -5,22 +5,22 @@ use std::hash::{Hash, Hasher};
 
 #[derive(Deserialize, Serialize, Getters)]
 pub struct PluginData {
-    #[serde(rename = "pluginName")]
+    #[serde(rename = "name")]
     #[getset(get = "pub")]
     name: String,
-    #[serde(rename = "pluginId")]
+    #[serde(rename = "id")]
     #[getset(get = "pub")]
     id: String,
-    #[serde(rename = "pluginDescription")]
+    #[serde(rename = "description")]
     #[getset(get = "pub")]
     description: String,
-    #[serde(rename = "pluginVersion")]
+    #[serde(rename = "version")]
     #[getset(get = "pub")]
     version: Version,
-    #[serde(rename = "pluginVendor")]
+    #[serde(rename = "vendor")]
     #[getset(get = "pub")]
     vendor: String,
-    #[serde(rename = "pluginVendorUrl")]
+    #[serde(rename = "vendor-url")]
     #[getset(get = "pub")]
     vendor_url: String,
     #[serde(rename = "tags")]
@@ -29,7 +29,7 @@ pub struct PluginData {
     #[serde(rename = "categories")]
     #[getset(get = "pub")]
     categories: Option<Vec<String>>,
-    #[serde(rename = "pluginDependencies")]
+    #[serde(rename = "dependencies")]
     #[getset(get = "pub")]
     dependencies: Vec<PluginDependency>,
 }
@@ -48,9 +48,9 @@ impl Hash for PluginData {
 
 #[derive(Deserialize, Serialize)]
 pub struct PluginDependency {
-    #[serde(rename = "pluginId")]
+    #[serde(rename = "id")]
     pub plugin_id: String,
-    #[serde(rename = "pluginVersion")]
+    #[serde(rename = "version")]
     pub plugin_version: String,
 }
 
@@ -62,20 +62,20 @@ mod tests {
     fn test_extract_plugin_data() {
         let plugin_data = r#"
 {
-  "pluginName": "Table Drawing",
-  "pluginId": "floor-plan",
-  "pluginDescription": "Draw and manage the tables is your establishment",
-  "pluginVersion": "3.0.0",
-  "pluginVendor": "Leba Studios - Software Solutions",
-  "pluginVendorUrl": "https://lebastudios.org",
-  "pluginDependencies": [
+  "name": "Table Drawing",
+  "id": "floor-plan",
+  "description": "Draw and manage the tables is your establishment",
+  "version": "3.0.0",
+  "vendor": "Leba Studios - Software Solutions",
+  "vendor-url": "https://lebastudios.org",
+  "dependencies": [
     {
-      "pluginId": "core",
-      "pluginVersion": "3.0.0"
+      "id": "core",
+      "version": "3.0.0"
     },
     {
-      "pluginId": "cr",
-      "pluginVersion": "3.0.0"
+      "id": "cr",
+      "version": "3.0.0"
     }
   ]
 }
