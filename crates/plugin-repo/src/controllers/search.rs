@@ -89,7 +89,7 @@ pub async fn search(
     let plugins: Vec<Plugin> = query_builder
         .fetch_all(guard.deref())
         .await
-        .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+        .map_err(actix_web::error::ErrorInternalServerError)?;
 
     let data_files = plugins.into_iter().filter_map(|p| {
         let version: data::Version = p.last_version().try_into().ok()?;

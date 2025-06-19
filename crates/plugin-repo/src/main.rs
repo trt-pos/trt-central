@@ -88,6 +88,7 @@ async fn start_server(port: u16, addrs: &str) -> std::io::Result<()> {
                     .service(controllers::plugin::put_plugin),
             )
             .service(web::scope("/search").service(controllers::search::search))
+            .service(web::scope("/categories").service(controllers::categories::get_all))
     })
     .bind((addrs, port))?
     .run()
