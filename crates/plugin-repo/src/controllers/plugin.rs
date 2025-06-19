@@ -254,32 +254,6 @@ impl<'b> PluginJar<'b> {
 
     async fn persist(&self, executor: &mut Transaction<'_, Sqlite>) -> Result<(), crate::Error>
     {
-        let plugin: Option<Plugin> =
-            sqlx::query_as("select id, name, last_version from plugin where id = ?")
-                .bind(self.data.id())
-                .fetch_optional(&mut **executor)
-                .await?;
-        
-        if let Some(plugin) = plugin {
-            let old_version: Version = plugin
-                .last_version()
-                .try_into()
-                .map_err(|_| sqlx::Error::Decode("Invalid version format".into()))?;
-
-            if old_version < *self.data.version() {
-                let plugin = Plugin::new(self.data.id(), &self.data.name(), self.data.version());
-                plugin.update(&mut **executor).await?;
-            };
-        } else {
-            let plugin = Plugin::new(self.data.id(), &self.data.name(), self.data.version());
-            plugin.insert(&mut **executor).await?;
-        }
-
-        let plugin_version = PluginVersion::new(self.data.id(), self.data.version());
-        if !plugin_version.exists(&mut **executor).await? {
-            plugin_version.insert(&mut **executor).await?;
-        }
-
         if let Some(categories) = self.data.categories() {
             for category in categories {
                 let category = Category::new(category);
@@ -296,6 +270,62 @@ impl<'b> PluginJar<'b> {
                     tag.insert(&mut **executor).await?;
                 }
             }
+        }
+        
+        let plugin: Option<Plugin> =
+            sqlx::query_as("select id, name, last_version from plugin where id = ?")
+                .bind(self.data.id())
+                .fetch_optional(&mut **executor)
+                .await?;
+        
+        if let Some(plugin) = plugin {
+            let old_version: Version = plugin
+                .last_version()
+                .try_into()
+                .map_err(|_| sqlx::Error::Decode("Invalid version format".into()))?;
+
+            if old_version < *self.data.version() {
+                let plugin = Plugin::new(self.data.id(), self.data.name(), self.data.version());
+                plugin.update(&mut **executor).await?;
+                
+                sqlx::query("delete from plugin_tag where plugin_id = ?")
+                    .bind(self.data.id())
+                    .execute(&mut **executor)
+                    .await?;
+                
+                sqlx::query("delete from plugin_category where plugin_id = ?")
+                    .bind(self.data.id())
+                    .execute(&mut **executor)
+                    .await?;
+
+                if let Some(categories) = self.data.categories() {
+                    for category in categories {
+                        sqlx::query("insert into plugin_category (plugin_id, category_name) values (?, ?)")
+                            .bind(self.data.id())
+                            .bind(category)
+                            .execute(&mut **executor)
+                            .await?;
+                    }
+                }
+
+                if let Some(tags) = self.data.tags() {
+                    for tag in tags {
+                        sqlx::query("insert into plugin_tag (plugin_id, tag_name) values (?, ?)")
+                            .bind(self.data.id())
+                            .bind(tag)
+                            .execute(&mut **executor)
+                            .await?;
+                    }
+                }
+            };
+        } else {
+            let plugin = Plugin::new(self.data.id(), self.data.name(), self.data.version());
+            plugin.insert(&mut **executor).await?;
+        }
+
+        let plugin_version = PluginVersion::new(self.data.id(), self.data.version());
+        if !plugin_version.exists(&mut **executor).await? {
+            plugin_version.insert(&mut **executor).await?;
         }
 
         Ok(())
