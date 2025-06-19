@@ -1,7 +1,7 @@
-use sqlx::FromRow;
-use sqlx::types::chrono::{DateTime, Utc};
-use data::Version;
 use crate::entities::License;
+use data::Version;
+use sqlx::types::chrono::{DateTime, Utc};
+use sqlx::FromRow;
 
 #[derive(FromRow)]
 pub struct AppInstallation {

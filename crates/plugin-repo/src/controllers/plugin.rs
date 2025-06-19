@@ -1,52 +1,60 @@
-use crate::data::*;
+use crate::data::plugin::get_plugin_folder_path;
+use crate::data::{PluginResource, PluginResourceType};
+use crate::entities::{Category, Entity, Plugin, PluginVersion, Tag};
 use actix_web::{get, post, put, web, Responder};
-use serde::Deserialize;
+use data::{PluginData, Version};
+use sqlx::{
+    Sqlite,
+    Transaction
+};
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 use std::fs::File;
 use std::io::{BufWriter, Cursor, Read, Write};
+use std::ops::DerefMut;
 use std::path::PathBuf;
 use std::sync::LazyLock;
 use std::{fs, io};
-
-#[derive(Deserialize)]
-struct ResourceIdentifier {
-    plugin_id: String,
-    version: String,
-    resource: String,
-}
+use tokio::sync::Mutex;
 
 #[get("/{plugin_id}/{version}/{resource}")]
 pub async fn get_plugin_resource(
-    path: web::Path<ResourceIdentifier>,
+    mut path: web::Path<PluginResource>,
+    db_pool: web::Data<Mutex<sqlx::SqlitePool>>,
 ) -> actix_web::Result<impl Responder> {
-    get_plugin_res(&path).await
-}
+    if path.version() == "last" {
+        let guard = db_pool.lock().await;
+        let plugin = Plugin::get(path.plugin_id(), &guard)
+            .await
+            .map_err(actix_web::error::ErrorNotFound)?;
 
-async fn get_plugin_res(
-    resource_identifier: &ResourceIdentifier,
-) -> actix_web::Result<impl Responder + use<>> {
-    let plugin = Plugin::new(&resource_identifier.plugin_id, &resource_identifier.version)?;
-    let resource = PluginResource::try_from(resource_identifier.resource.as_str())?;
-    
-    let path_buff = PathBuf::from(plugin.get_plugin_resource(&resource));
-
-    if !path_buff.exists() {
-        return Err(actix_web::error::ErrorNotFound(format!(
-            "plugin {} not found in the repository",
-            plugin
-        )));
+        path.set_version(plugin.last_version().to_string());
     }
 
-    Ok(actix_files::NamedFile::open(path_buff))
+    let res_path = PathBuf::from(path.get_path());
+
+    if !res_path.exists() {
+        return Err(actix_web::error::ErrorNotFound(
+            "resource not found in the repository".to_string(),
+        ));
+    }
+
+    Ok(actix_files::NamedFile::open(res_path))
 }
 
 #[post("/")]
 pub async fn post_plugin(
     body: web::Bytes,
+    db_pool: web::Data<Mutex<sqlx::SqlitePool>>,
     _auth: crate::middleware::PluginPublishingAuthToken,
 ) -> actix_web::Result<impl Responder> {
-    persist_plugin(body, |plugin| {
-        let path_buff = PathBuf::from(plugin.get_resource_path());
+    let mut guard = db_pool.lock().await;
+
+    persist_plugin(body, guard.deref_mut(), |plugin| {
+        let path_buff = PathBuf::from(get_plugin_folder_path(
+            plugin.data.id(),
+            &plugin.data.version().to_string(),
+        ));
 
         if path_buff.exists() {
             return Err(actix_web::error::ErrorConflict(format!(
@@ -63,10 +71,16 @@ pub async fn post_plugin(
 #[put("/")]
 pub async fn put_plugin(
     body: web::Bytes,
+    db_pool: web::Data<Mutex<sqlx::SqlitePool>>,
     _auth: crate::middleware::PluginPublishingAuthToken,
 ) -> actix_web::Result<impl Responder> {
-    persist_plugin(body, |plugin| {
-        let plugin_version_dir = PathBuf::from(plugin.get_resource_path());
+    let mut guard = db_pool.lock().await;
+
+    persist_plugin(body, guard.deref_mut(), |plugin| {
+        let plugin_version_dir = PathBuf::from(get_plugin_folder_path(
+            plugin.data.id(),
+            &plugin.data.version().to_string(),
+        ));
 
         if !plugin_version_dir.exists() {
             return Err(actix_web::error::ErrorNotFound(format!(
@@ -80,26 +94,42 @@ pub async fn put_plugin(
     .await
 }
 
-async fn persist_plugin<F>(body: web::Bytes, is_valid: F) -> actix_web::Result<impl Responder>
+async fn persist_plugin<F>(
+    body: web::Bytes,
+    db_pool: &mut sqlx::SqlitePool,
+    validate: F,
+) -> actix_web::Result<impl Responder + use<F>>
 where
-    F: Fn(&Plugin) -> Result<(), actix_web::error::Error>,
+    F: Fn(&PluginJar) -> Result<(), actix_web::error::Error>,
 {
-    let plugin = Plugin::try_from(body.as_ref())?;
+    let plugin = PluginJar::new(body.as_ref())?;
+    validate(&plugin)?;
 
-    is_valid(&plugin)?;
+    let mut transaction = db_pool.begin().await.map_err(|e| {
+        actix_web::error::ErrorInternalServerError(format!("Failed to begin transaction: {}", e))
+    })?;
+    
+    if let Err(e) = plugin.persist(&mut transaction).await {
+        let _ = transaction.rollback().await;
+        return Err(actix_web::error::ErrorInternalServerError(e));
+    };
 
-    let temp_dir = std::env::temp_dir().join(format!("plugin_tmp_{}", uuid::Uuid::new_v4()));
+    let temp_dir = std::env::temp_dir().join(format!("trt_plugin_{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&temp_dir)?;
 
-    let resource_dir = PathBuf::from(plugin.get_resource_path());
-    extract_and_save_plugin_from_zip(&temp_dir, body, &resource_dir).await?;
+    let plugin_dir = PathBuf::from(get_plugin_folder_path(
+        plugin.data.id(),
+        &plugin.data.version().to_string(),
+    ));
 
+    if let Err(e) = extract_and_save_plugin_from_zip(&temp_dir, body, &plugin_dir).await {
+        let _ = fs::remove_dir_all(&temp_dir);
+        let _ = transaction.rollback().await;
+        return Err(e.into());
+    }
+
+    let _ = transaction.commit().await;
     let _ = fs::remove_dir(temp_dir);
-
-    // Updating the plugin repo metadata
-    let mut metadata = Metadata::load(plugin.plugin_id())?;
-    metadata.add_version(plugin.version().clone());
-    metadata.save()?;
 
     Ok(actix_web::HttpResponse::Ok())
 }
@@ -109,10 +139,10 @@ async fn extract_and_save_plugin_from_zip(
     jar: web::Bytes,
     resource_dir: &PathBuf,
 ) -> io::Result<()> {
-    static FILES_TO_EXTRACT: LazyLock<HashMap<&str, PluginResource>> = LazyLock::new(|| {
+    static FILES_TO_EXTRACT: LazyLock<HashMap<&str, PluginResourceType>> = LazyLock::new(|| {
         HashMap::from([
-            ("plugin-icon.png", PluginResource::Icon),
-            ("plugin-data.json", PluginResource::Data),
+            ("plugin-icon.png", PluginResourceType::Icon),
+            ("plugin-data.json", PluginResourceType::Data),
         ])
     });
     let reader = Cursor::new(&jar);
@@ -157,7 +187,7 @@ async fn extract_and_save_plugin_from_zip(
         ));
     }
 
-    let dest_path = temp_dir.join(PluginResource::Jar.to_string());
+    let dest_path = temp_dir.join(PluginResourceType::Jar.to_string());
     let mut writer = BufWriter::new(File::create(&dest_path)?);
     writer.write_all(jar.as_ref())?;
 
@@ -175,4 +205,105 @@ async fn extract_and_save_plugin_from_zip(
     }
 
     Ok(())
+}
+
+struct PluginJar<'b> {
+    jar_bytes: &'b [u8],
+    data: PluginData,
+}
+
+impl<'b> PluginJar<'b> {
+    fn new(jar_bytes: &'b [u8]) -> Result<Self, actix_web::Error> {
+        let reader = Cursor::new(jar_bytes);
+        let mut archive = zip::ZipArchive::new(reader).map_err(|e| {
+            actix_web::error::ErrorBadRequest(format!("Failed to open the plugin jar: {}", e))
+        })?;
+
+        for i in 0..archive.len() {
+            let mut file = if let Ok(file) = archive.by_index(i) {
+                file
+            } else {
+                continue;
+            };
+
+            if !file.is_file() || file.name().rsplit('/').next().unwrap_or("") != "plugin-data.json"
+            {
+                continue;
+            }
+
+            let mut plugin_data_json = String::new();
+            if file.read_to_string(&mut plugin_data_json).is_err() {
+                continue;
+            }
+
+            let plugin_data =
+                serde_json::from_str::<PluginData>(&plugin_data_json).map_err(|e| {
+                    actix_web::error::ErrorBadRequest(format!("unable to parse plugin data: {e}"))
+                })?;
+
+            return Ok(Self {
+                jar_bytes,
+                data: plugin_data,
+            });
+        }
+
+        Err(actix_web::error::ErrorBadRequest(
+            "Invalid plugin data".to_string(),
+        ))
+    }
+
+    async fn persist(&self, executor: &mut Transaction<'_, Sqlite>) -> Result<(), crate::Error>
+    {
+        let plugin: Option<Plugin> =
+            sqlx::query_as("select id, name, last_version from plugin where id = ?")
+                .bind(self.data.id())
+                .fetch_optional(&mut **executor)
+                .await?;
+        
+        if let Some(plugin) = plugin {
+            let old_version: Version = plugin
+                .last_version()
+                .try_into()
+                .map_err(|_| sqlx::Error::Decode("Invalid version format".into()))?;
+
+            if old_version < *self.data.version() {
+                let plugin = Plugin::new(self.data.id(), &self.data.name(), self.data.version());
+                plugin.update(&mut **executor).await?;
+            };
+        } else {
+            let plugin = Plugin::new(self.data.id(), &self.data.name(), self.data.version());
+            plugin.insert(&mut **executor).await?;
+        }
+
+        let plugin_version = PluginVersion::new(self.data.id(), self.data.version());
+        if !plugin_version.exists(&mut **executor).await? {
+            plugin_version.insert(&mut **executor).await?;
+        }
+
+        if let Some(categories) = self.data.categories() {
+            for category in categories {
+                let category = Category::new(category);
+                if !category.exists(&mut **executor).await? {
+                    category.insert(&mut **executor).await?;
+                }
+            }
+        }
+
+        if let Some(tags) = self.data.tags() {
+            for tag in tags {
+                let tag = Tag::new(tag);
+                if !tag.exists(&mut **executor).await? {
+                    tag.insert(&mut **executor).await?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl Display for PluginJar<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.data.id(), self.data.version())
+    }
 }

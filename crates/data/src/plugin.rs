@@ -1,48 +1,48 @@
 use crate::Version;
+use getset::Getters;
 use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Getters)]
 pub struct PluginData {
     #[serde(rename = "pluginName")]
-    plugin_name: String,
+    #[getset(get = "pub")]
+    name: String,
     #[serde(rename = "pluginId")]
-    plugin_id: String,
+    #[getset(get = "pub")]
+    id: String,
     #[serde(rename = "pluginDescription")]
-    plugin_description: String,
+    #[getset(get = "pub")]
+    description: String,
     #[serde(rename = "pluginVersion")]
-    plugin_version: Version,
+    #[getset(get = "pub")]
+    version: Version,
     #[serde(rename = "pluginVendor")]
-    plugin_vendor: String,
+    #[getset(get = "pub")]
+    vendor: String,
     #[serde(rename = "pluginVendorUrl")]
-    plugin_vendor_url: String,
+    #[getset(get = "pub")]
+    vendor_url: String,
     #[serde(rename = "tags")]
+    #[getset(get = "pub")]
     tags: Option<Vec<String>>,
-    #[serde(rename = "category")]
-    category: Option<String>,
+    #[serde(rename = "categories")]
+    #[getset(get = "pub")]
+    categories: Option<Vec<String>>,
     #[serde(rename = "pluginDependencies")]
-    plugin_dependencies: Vec<PluginDependency>,
-}
-
-impl PluginData {
-    pub fn version(&self) -> &Version {
-        &self.plugin_version
-    }
-
-    pub fn id(&self) -> &str {
-        &self.plugin_id
-    }
+    #[getset(get = "pub")]
+    dependencies: Vec<PluginDependency>,
 }
 
 impl PartialEq for PluginData {
     fn eq(&self, other: &Self) -> bool {
-        self.plugin_name == other.plugin_name
+        self.name == other.name
     }
 }
 
 impl Hash for PluginData {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.plugin_id.hash(state)
+        self.id.hash(state)
     }
 }
 

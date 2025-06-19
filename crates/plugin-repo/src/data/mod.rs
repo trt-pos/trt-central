@@ -1,6 +1,4 @@
-mod metadata;
-mod plugin;
+pub mod plugin;
 
-pub use metadata::Metadata;
-pub use plugin::Plugin;
 pub use plugin::PluginResource;
+pub use plugin::PluginResourceType;

@@ -9,13 +9,13 @@ dotenv = { version = "0.15.0" }
 actix-web = { version = "4.10.2" }
 actix-files = { version = "0.6.6" }
 zip = { version = "3.0.0" }
-sqlx = { version = "0.8.5", features = [ "runtime-tokio", "mysql", "macros", "chrono", "migrate"] }
 bcrypt = "0.17.0"
 getset = { version = "0.1.5" }
 
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+sqlx = { workspace = true, features = ["mysql"] }
 
 data = { path = "../data" }
 

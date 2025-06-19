@@ -19,7 +19,23 @@ impl TryFrom<String> for Version {
     type Error = crate::Error;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        let numbers: Vec<&str> = value.split('.').collect();
+        Self::try_from(value.as_str())
+    }
+}
+
+impl TryFrom<&String> for Version {
+    type Error = crate::Error;
+
+    fn try_from(value: &String) -> Result<Self, Self::Error> {
+        Self::try_from(value.as_str())
+    }
+}
+
+impl TryFrom<&str> for Version {
+    type Error = crate::Error;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        let numbers: Vec<&str> = value.trim().split('.').collect();
 
         if numbers.len() != 3 {
             return Err(crate::Error::InvalidStringFormat(
