@@ -3,10 +3,7 @@ use crate::data::{PluginResource, PluginResourceType};
 use crate::entities::{Category, Entity, Plugin, PluginVersion, Tag};
 use actix_web::{get, post, put, web, Responder};
 use data::{PluginData, Version};
-use sqlx::{
-    Sqlite,
-    Transaction
-};
+use sqlx::{Sqlite, Transaction};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
@@ -108,7 +105,7 @@ where
     let mut transaction = db_pool.begin().await.map_err(|e| {
         actix_web::error::ErrorInternalServerError(format!("Failed to begin transaction: {}", e))
     })?;
-    
+
     if let Err(e) = plugin.persist(&mut transaction).await {
         let _ = transaction.rollback().await;
         return Err(actix_web::error::ErrorInternalServerError(e));
@@ -252,8 +249,7 @@ impl<'b> PluginJar<'b> {
         ))
     }
 
-    async fn persist(&self, executor: &mut Transaction<'_, Sqlite>) -> Result<(), crate::Error>
-    {
+    async fn persist(&self, executor: &mut Transaction<'_, Sqlite>) -> Result<(), crate::Error> {
         if let Some(categories) = self.data.categories() {
             for category in categories {
                 let category = Category::new(category);
@@ -271,13 +267,13 @@ impl<'b> PluginJar<'b> {
                 }
             }
         }
-        
+
         let plugin: Option<Plugin> =
             sqlx::query_as("select id, name, last_version from plugin where id = ?")
                 .bind(self.data.id())
                 .fetch_optional(&mut **executor)
                 .await?;
-        
+
         if let Some(plugin) = plugin {
             let old_version: Version = plugin
                 .last_version()
@@ -287,12 +283,12 @@ impl<'b> PluginJar<'b> {
             if old_version < *self.data.version() {
                 let plugin = Plugin::new(self.data.id(), self.data.name(), self.data.version());
                 plugin.update(&mut **executor).await?;
-                
+
                 sqlx::query("delete from plugin_tag where plugin_id = ?")
                     .bind(self.data.id())
                     .execute(&mut **executor)
                     .await?;
-                
+
                 sqlx::query("delete from plugin_category where plugin_id = ?")
                     .bind(self.data.id())
                     .execute(&mut **executor)
@@ -300,11 +296,13 @@ impl<'b> PluginJar<'b> {
 
                 if let Some(categories) = self.data.categories() {
                     for category in categories {
-                        sqlx::query("insert into plugin_category (plugin_id, category_name) values (?, ?)")
-                            .bind(self.data.id())
-                            .bind(category)
-                            .execute(&mut **executor)
-                            .await?;
+                        sqlx::query(
+                            "insert into plugin_category (plugin_id, category_name) values (?, ?)",
+                        )
+                        .bind(self.data.id())
+                        .bind(category)
+                        .execute(&mut **executor)
+                        .await?;
                     }
                 }
 
