@@ -8,7 +8,7 @@ edition = "2024"
 dotenv = { version = "0.15.0" }
 actix-web = { version = "4.10.2" }
 actix-files = { version = "0.6.6" }
-zip = { version = "3.0.0" }
+zip = { version = "6.0.0" }
 bcrypt = "0.17.0"
 getset = { version = "0.1.5" }
 
